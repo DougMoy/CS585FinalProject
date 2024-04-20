@@ -39,7 +39,7 @@ def get_data_loader(sequence_ids, processor, batch_size=4, shuffle=False):
     return data_loader
 
 
-def evaluate(model, test_loader, criterion):
+def evaluate(model, test_loader, criterion, device):
     model.eval()
     total_loss = 0.0
     with torch.no_grad():
@@ -73,7 +73,7 @@ def train_model(model, train_loader, test_loader, num_epochs=10):
             running_loss += loss.item()
 
         print(f"Epoch {epoch + 1}, Loss: {running_loss / len(train_loader)}")
-        evaluate(model, test_loader, criterion)
+        evaluate(model, test_loader, criterion, device)
 
 
 class AnglePredictor(nn.Module):
