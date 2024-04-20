@@ -1,22 +1,26 @@
 import argparse
-
 import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 from tqdm import tqdm
+import torchvision.models as models
+from torchvision import transforms
 
-from transformers import DetrForObjectDetection, DetrImageProcessor
-
+# 假设你已有load_data函数或相应的数据加载机制
 import load_data
 
 
 class VehicleDataset(Dataset):
-    def __init__(self, images, labels, bboxes, processor):
+    def __init__(self, images, labels, bboxes):
         self.images = images
         self.labels = labels
         self.bboxes = bboxes
-        self.processor = processor
+        self.transforms = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
 
     def __len__(self):
         return len(self.images)
@@ -25,20 +29,28 @@ class VehicleDataset(Dataset):
         image = Image.fromarray(self.images[idx])
         label = self.labels[idx]
         bbox = self.bboxes[idx]
-
         cropped_image = image.crop((bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]))
-        resized_image = cropped_image.resize((224, 224))
-
-        inputs = self.processor(images=resized_image, return_tensors="pt")
-        return inputs['pixel_values'].squeeze(0), torch.tensor([label])
+        image_tensor = self.transforms(cropped_image)
+        return image_tensor, torch.tensor([label])
 
 
-def get_data_loaders(
-        train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes,
-        processor, batch_size=4,
-):
-    train_dataset = VehicleDataset(train_images, train_labels, train_bboxes, processor)
-    test_dataset = VehicleDataset(test_images, test_labels, test_bboxes, processor)
+class AnglePredictor(nn.Module):
+    def __init__(self):
+        super(AnglePredictor, self).__init__()
+        self.resnet_model = models.resnet50(pretrained=True)
+        self.resnet_model = nn.Sequential(*list(self.resnet_model.children())[:-1])
+        self.regression_head = nn.Linear(2048, 1)
+
+    def forward(self, pixel_values):
+        features = self.resnet_model(pixel_values)
+        features = features.view(features.size(0), -1)
+        angle = self.regression_head(features)
+        return angle
+
+
+def get_data_loaders(train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes, batch_size=4):
+    train_dataset = VehicleDataset(train_images, train_labels, train_bboxes)
+    test_dataset = VehicleDataset(test_images, test_labels, test_bboxes)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     return train_loader, test_loader
@@ -82,39 +94,22 @@ def train_model(model, train_loader, test_loader, num_epochs=10):
         evaluate(model, test_loader, device)
 
 
-class AnglePredictor(nn.Module):
-    def __init__(self, detr_model, processor):
-        super(AnglePredictor, self).__init__()
-        self.detr_model = detr_model
-        self.processor = processor
-        self.regression_head = nn.Linear(256, 1)  # assuming feature dimension of 256
-
-    def forward(self, pixel_values):
-        outputs = self.detr_model(pixel_values)
-        # Using mean pooling of features from all detected objects
-        features = torch.mean(outputs.last_hidden_state, dim=1)
-        angle = self.regression_head(features)
-        return angle
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--bz", default=4, type=int, help="batch size")
+    parser.add_argument("--epoch", default=100, type=int)
 
     args = parser.parse_args()
     print(args)
 
-    detr_model = DetrForObjectDetection.from_pretrained('facebook/detr-resnet-50')
-    processor = DetrImageProcessor.from_pretrained('facebook/detr-resnet-50')
-
     train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes = load_data.load_data()
     train_loader, test_loader = get_data_loaders(
         train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes,
-        processor, args.bz,
+        args.bz,
     )
 
-    model = AnglePredictor(detr_model, processor)
-    train_model(model, train_loader, test_loader)
+    model = AnglePredictor()
+    train_model(model, train_loader, test_loader, num_epochs=args.epoch)
 
 
 if __name__ == "__main__":
