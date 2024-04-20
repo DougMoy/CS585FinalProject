@@ -59,22 +59,16 @@ def load_and_preprocess_data(base_path, sequence_ids, img_width, img_height,
     return np.array(data), np.array(labels), np.array(bboxes)
 
 
-def load_data():
+def load_data(sequence_ids):
     base_path = r'./data/epfl-gims08/tripod-seq'
     file_path = r'./data/epfl-gims08/tripod-seq/tripod-seq.txt'
-
-    train_sequence_ids = list(range(1, 11))  # Sequences 1-10 for training
-    test_sequence_ids = list(range(11, 21))  # Sequences 11-20 for testing
 
     image_dims, num_frames, frames_360, frontal_frames, rotation_sense = parse_tripod_seq_file(file_path)
     img_width, img_height = image_dims[1], image_dims[2]
 
     # Load data
-    train_images, train_labels, train_bboxes = load_and_preprocess_data(
-        base_path, train_sequence_ids, img_width, img_height,
+    images, labels, bboxes = load_and_preprocess_data(
+        base_path, sequence_ids, img_width, img_height,
         num_frames[:10], frames_360[:10], frontal_frames[:10], rotation_sense[:10])
-    test_images, test_labels, test_bboxes = load_and_preprocess_data(
-        base_path, test_sequence_ids, img_width, img_height,
-        num_frames[10:], frames_360[10:], frontal_frames[10:], rotation_sense[10:])
 
-    return train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes
+    return images, labels, bboxes
