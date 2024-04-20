@@ -32,11 +32,15 @@ class VehicleDataset(Dataset):
         return inputs['pixel_values'].squeeze(0), torch.tensor([label])
 
 
-def get_data_loader(sequence_ids, processor, batch_size=4, shuffle=False):
-    images, labels, bboxes = load_data.load_data(sequence_ids)
-    dataset = VehicleDataset(images, labels, bboxes, processor)
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
-    return data_loader
+def get_data_loaders(
+        train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes,
+        processor, batch_size=4,
+):
+    train_dataset = VehicleDataset(train_images, train_labels, train_bboxes, processor)
+    test_dataset = VehicleDataset(test_images, test_labels, test_bboxes, processor)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    return train_loader, test_loader
 
 
 def evaluate(model, test_loader, criterion, device):
@@ -92,21 +96,20 @@ class AnglePredictor(nn.Module):
 
 
 def main():
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--bz", default=4, type=int, help="batch size")
 
     args = parser.parse_args()
     print(args)
 
-    train_sequence_ids = list(range(1, 11))  # Sequences 1-10 for training
-    test_sequence_ids = list(range(11, 21))  # Sequences 11-20 for testing
-
     detr_model = DetrForObjectDetection.from_pretrained('facebook/detr-resnet-50')
     processor = DetrImageProcessor.from_pretrained('facebook/detr-resnet-50')
 
-    train_loader = get_data_loader(train_sequence_ids, processor, batch_size=args.bz, shuffle=True)
-    test_loader = get_data_loader(test_sequence_ids, processor, batch_size=args.bz, shuffle=False)
+    train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes = load_data.load_data()
+    train_loader, test_loader = get_data_loaders(
+        train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes,
+        processor, args.bz,
+    )
 
     model = AnglePredictor(detr_model, processor)
     train_model(model, train_loader, test_loader)
