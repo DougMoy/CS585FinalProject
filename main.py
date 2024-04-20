@@ -7,7 +7,6 @@ from tqdm import tqdm
 import torchvision.models as models
 from torchvision import transforms
 
-# 假设你已有load_data函数或相应的数据加载机制
 import load_data
 
 
