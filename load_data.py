@@ -1,5 +1,6 @@
 import numpy as np
 from PIL import Image
+from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 
@@ -59,6 +60,10 @@ def load_and_preprocess_data(base_path, sequence_ids, img_width, img_height,
     return np.array(data), np.array(labels), np.array(bboxes)
 
 
+def map_angle_to_0_360(angle):
+    return angle % 360
+
+
 def load_data():
     file_path = r'./data/epfl-gims08/tripod-seq/tripod-seq.txt'
     base_path = r'./data/epfl-gims08/tripod-seq'
@@ -76,4 +81,28 @@ def load_data():
         base_path, test_sequence_ids, img_width, img_height, num_frames[10:], frames_360[10:], frontal_frames[10:],
         rotation_sense[10:])
 
+    train_labels = [map_angle_to_0_360(angle) for angle in train_labels]
+    test_labels = [map_angle_to_0_360(angle) for angle in test_labels]
+
     return train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes
+
+
+def draw_distribution(ax, angles, title='Distribution of Angles'):
+    ax.hist(angles, bins=range(-10, 371, 10), color='blue', edgecolor='black')  # Bins from -10 to 370 degrees
+    ax.set_title(title)
+    ax.set_xlabel('Angle (degrees)')
+    ax.set_ylabel('Frequency')
+    ax.set_xticks(range(-10, 371, 30))  # Setting x-axis ticks every 30 degrees for clarity
+    ax.grid(True)
+
+def main():
+    train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes = load_data()
+
+    fig, axs = plt.subplots(1, 2, figsize=(20, 6))  # Create 1 row, 2 columns of subplots
+    draw_distribution(axs[0], train_labels, "Distribution of Train Angles (Degrees)")
+    draw_distribution(axs[1], test_labels, "Distribution of Test Angles (Degrees)")
+    plt.show()
+
+
+if __name__ == '__main__':
+    main()
