@@ -6,10 +6,10 @@ from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 from tqdm import tqdm
-import torchvision.models as models
 from torchvision import transforms
 
 import load_data
+from models import AnglePredictor
 
 
 class VehicleDataset(Dataset):
@@ -35,41 +35,22 @@ class VehicleDataset(Dataset):
         return image_tensor, torch.tensor([label])
 
 
-class AnglePredictor(nn.Module):
-    def __init__(self):
-        super(AnglePredictor, self).__init__()
-        self.resnet_model = models.resnet50(pretrained=True)
+def discrete_angle(angles, num_classes=8):
+    """
+    Convert continuous angles (in degrees) to discrete class indices.
+    Args:
+        angles (torch.Tensor): Tensor of angles in degrees.
+        num_classes (int): Number of discrete classes for the output.
+    Returns:
+        torch.Tensor: Tensor of discrete class indices.
+    """
+    # Ensure angles are within [0, 360)
+    # angles = angles % 360
 
-        # Freeze all layers first
-        for param in self.resnet_model.parameters():
-            param.requires_grad = False
+    # Compute the class indices
+    class_indices = torch.floor(angles / (360 / num_classes)).long()
 
-        # Unfreeze the last 15 layers
-        num_layers = len(list(self.resnet_model.children()))
-        layers_to_unfreeze = list(self.resnet_model.children())[num_layers - 15:]
-        for layer in layers_to_unfreeze:
-            for param in layer.parameters():
-                param.requires_grad = True
-
-        # Modify the ResNet model to not include the final fully connected layer
-        self.features = nn.Sequential(*list(self.resnet_model.children())[:-1])
-
-        # Expanded regression head
-        self.regression_head = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(2048, 512),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(512, 512),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(512, 1)  # Outputting a single value for angle
-        )
-
-    def forward(self, pixel_values):
-        features = self.features(pixel_values)
-        angle = self.regression_head(features)
-        return angle
+    return class_indices
 
 
 def get_data_loaders(train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes, batch_size=4):
@@ -87,6 +68,9 @@ def evaluate(model, test_loader, device):
     with torch.no_grad():
         for inputs, labels in test_loader:
             inputs, labels = inputs.to(device), labels.to(device)
+
+            labels = labels.squeeze()
+
             outputs = model(inputs)
             loss = criterion(outputs, labels.float())
             total_loss += loss.item()
@@ -99,7 +83,8 @@ def train_model(model, train_loader, test_loader, num_epochs=10):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = nn.MSELoss()
+
+    criterion = nn.CrossEntropyLoss()  # Suitable for classification with discrete class indices
 
     for epoch in tqdm(range(num_epochs)):
         model.train()
@@ -109,7 +94,14 @@ def train_model(model, train_loader, test_loader, num_epochs=10):
 
             optimizer.zero_grad()
             outputs = model(inputs)
-            loss = criterion(outputs, labels.float())
+
+            class_indices = discrete_angle(labels, num_classes=model.num_classes).to(device)
+
+            # print(outputs.shape)
+            # print(class_indices.shape)
+
+            loss = criterion(outputs, class_indices.squeeze())
+
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
@@ -121,7 +113,8 @@ def train_model(model, train_loader, test_loader, num_epochs=10):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--bz", default=4, type=int, help="batch size")
-    parser.add_argument("--epoch", default=50, type=int)
+    parser.add_argument("--epoch", default=30, type=int)
+    parser.add_argument("--cls_n", default=8, type=int, help="num of classes")
 
     args = parser.parse_args()
     print(args)
@@ -133,7 +126,7 @@ def main():
         args.bz,
     )
 
-    model = AnglePredictor()
+    model = AnglePredictor(num_classes=args.cls_n)
     train_model(model, train_loader, test_loader, num_epochs=args.epoch)
 
 

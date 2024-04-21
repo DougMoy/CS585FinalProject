@@ -95,6 +95,7 @@ def draw_distribution(ax, angles, title='Distribution of Angles'):
     ax.set_xticks(range(-10, 371, 30))  # Setting x-axis ticks every 30 degrees for clarity
     ax.grid(True)
 
+
 def main():
     train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes = load_data()
 
