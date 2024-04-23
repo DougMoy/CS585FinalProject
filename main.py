@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 
 import numpy as np
@@ -132,9 +133,10 @@ def calculate_accuracy(model, test_loader, device):
 
     # Compute average accuracy for each start angle
     accuracies = (total_correct_preds / total_samples).tolist()
-    print("Accuracies per start angle:", np.mean(accuracies), accuracies)
+    mean_acc = float(np.mean(accuracies))
+    print("Accuracies per start angle:", mean_acc, accuracies)
 
-    return accuracies
+    return mean_acc, accuracies
 
 
 def circular_variance_loss(outputs, labels, num_classes, var_weight=0.1):
@@ -185,6 +187,8 @@ def train_model(device, model, train_loader, val_loader, num_epochs=30, lr=0.001
     criterion = nn.CrossEntropyLoss()
     # criterion = circular_variance_loss
 
+    logs = {}
+
     for epoch in tqdm(range(num_epochs)):
         model.train()
         running_loss = 0.0
@@ -209,15 +213,23 @@ def train_model(device, model, train_loader, val_loader, num_epochs=30, lr=0.001
 
             running_loss += loss.item()
 
-        print(f"Epoch {epoch + 1}, Train Loss: {running_loss / len(train_loader)}")
+        train_loss = running_loss / len(train_loader)
+
+        print(f"Epoch {epoch + 1}, Train Loss: {train_loss}")
 
         # scheduler.step()
 
-        calculate_accuracy(model, train_loader, device)
+        train_mean_acc, train_acc = calculate_accuracy(model, train_loader, device)
 
-        calculate_accuracy(model, val_loader, device)
+        test_mean_acc, test_acc = calculate_accuracy(model, val_loader, device)
 
-    return model
+        logs[epoch] = dict(
+            train_loss=train_acc,
+            train_mean_acc=train_mean_acc,
+            test_mean_acc=test_mean_acc,
+        )
+
+    return model, logs
 
 
 def main():
@@ -243,7 +255,8 @@ def main():
 
     model = AnglePredictor(num_classes=args.cls_n)
 
-    model_save_path = f'models/checkpoint_discrete_cls={args.cls_n}_set={args.set_n}_e={args.epoch}.pth'
+    arg_info = f"cls={args.cls_n}_set={args.set_n}_e={args.epoch}"
+    model_save_path = f'models/checkpoint_discrete_{arg_info}.pth'
 
     if args.eval:
         model.load_state_dict(torch.load(model_save_path), strict=False)
@@ -252,7 +265,11 @@ def main():
         evaluate(model, test_loader, device)
         return
 
-    model = train_model(device, model, train_loader, val_loader, num_epochs=args.epoch)
+    model, train_logs = train_model(device, model, train_loader, val_loader, num_epochs=args.epoch)
+
+    os.makedirs("results")
+    with open(f"results/train_logs_{arg_info}.json", "w") as f:
+        json.dump(train_logs, f, indent=4)
 
     evaluate(model, _test_train_loader, device)
     evaluate(model, test_loader, device)
