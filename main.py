@@ -240,11 +240,28 @@ def main():
     parser.add_argument("--cls_n", default=8, type=int, help="num of classes")
     parser.add_argument("--set_n", default=9, type=int, help="num of classes")
     parser.add_argument("--eval", action="store_true")
+    parser.add_argument("--transfer", action="store_true")
 
     args = parser.parse_args()
     print(args)
 
     train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes = load_data.load_data()
+    print(len(train_images), len(test_images))
+
+    if args.transfer:
+        import random
+        sample_n = int(0.1 * len(test_labels))
+        sample_indices = random.sample(range(len(test_labels)), sample_n)
+
+        sampled_images = [test_images[i] for i in sample_indices]
+        sampled_labels = [test_labels[i] for i in sample_indices]
+        sampled_bboxes = [test_bboxes[i] for i in sample_indices]
+
+        train_images = np.concatenate((train_images, sampled_images), axis=0)
+        train_labels = np.concatenate((train_labels, sampled_labels), axis=0)
+        train_bboxes = np.concatenate((train_bboxes, sampled_bboxes), axis=0)
+
+    print(len(train_images), len(test_images))
 
     train_loader, val_loader, test_loader, _test_train_loader = get_data_loaders(
         train_images, train_labels, train_bboxes, test_images, test_labels, test_bboxes,
@@ -256,6 +273,9 @@ def main():
     model = AnglePredictor(num_classes=args.cls_n)
 
     arg_info = f"cls={args.cls_n}_set={args.set_n}_e={args.epoch}"
+    if args.transfer:
+        arg_info += "_transfer"
+
     model_save_path = f'models/checkpoint_discrete_{arg_info}.pth'
 
     if args.eval:
