@@ -267,7 +267,7 @@ def main():
 
     model, train_logs = train_model(device, model, train_loader, val_loader, num_epochs=args.epoch)
 
-    os.makedirs("results")
+    os.makedirs("results", exist_ok=True)
     with open(f"results/train_logs_{arg_info}.json", "w") as f:
         json.dump(train_logs, f, indent=4)
 
