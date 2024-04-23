@@ -224,7 +224,7 @@ def train_model(device, model, train_loader, val_loader, num_epochs=30, lr=0.001
         test_mean_acc, test_acc = calculate_accuracy(model, val_loader, device)
 
         logs[epoch] = dict(
-            train_loss=train_acc,
+            train_loss=train_loss,
             train_mean_acc=train_mean_acc,
             test_mean_acc=test_mean_acc,
         )
