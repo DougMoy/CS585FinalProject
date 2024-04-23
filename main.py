@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import numpy as np
 import torch
@@ -226,6 +227,7 @@ def main():
     parser.add_argument("--epoch", default=30, type=int)
     parser.add_argument("--cls_n", default=8, type=int, help="num of classes")
     parser.add_argument("--set_n", default=9, type=int, help="num of classes")
+    parser.add_argument("--eval", action="store_true")
 
     args = parser.parse_args()
     print(args)
@@ -240,10 +242,23 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = AnglePredictor(num_classes=args.cls_n)
+
+    model_save_path = f'models/checkpoint_discrete_cls={args.cls_n}_set={args.set_n}_e={args.epoch}.pth'
+
+    if args.eval:
+        model.load_state_dict(torch.load(model_save_path), strict=False)
+        model.to(device)
+        evaluate(model, _test_train_loader, device)
+        evaluate(model, test_loader, device)
+        return
+
     model = train_model(device, model, train_loader, val_loader, num_epochs=args.epoch)
 
     evaluate(model, _test_train_loader, device)
     evaluate(model, test_loader, device)
+
+    os.makedirs("models/", exist_ok=True)
+    torch.save(model.state_dict(), model_save_path)
 
 
 if __name__ == "__main__":
