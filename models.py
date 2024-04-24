@@ -27,19 +27,6 @@ class FeatureExtractor(nn.Module):
         return self.features(x)
 
 
-# class MultiHeadOrientationLayer(nn.Module):
-#     def __init__(self, input_dim, num_classes, num_heads):
-#         super(MultiHeadOrientationLayer, self).__init__()
-#         self.heads = nn.ModuleList([
-#             nn.Linear(input_dim, num_classes) for _ in range(num_heads)
-#         ])
-#
-#     def forward(self, x):
-#         x = torch.flatten(x, 1)
-#         outputs = [head(x) for head in self.heads]
-#         return torch.stack(outputs, dim=1)  # shape: [batch, num_heads, num_classes]
-
-
 class ObjectOrientLayer(nn.Module):
     def __init__(self, input_dim, num_classes, num_sets, dropout_prob=0.3):
         super(ObjectOrientLayer, self).__init__()
@@ -64,9 +51,9 @@ class ObjectOrientLayer(nn.Module):
         return output
 
 
-class MeanShiftLayer(nn.Module):
+class MeanShiftLayer_0(nn.Module):
     def __init__(self, num_classes, num_sets):
-        super(MeanShiftLayer, self).__init__()
+        super(MeanShiftLayer_0, self).__init__()
         self.num_classes = num_classes
         self.num_sets = num_sets
         # Create angles for each class, assuming equal distribution over 360 degrees
@@ -104,6 +91,43 @@ class MeanShiftLayer(nn.Module):
         # mean_angle_degrees -= 20
 
         return mean_angle_degrees % 360  # Shape: [batch]
+
+
+class MeanShiftLayer(nn.Module):
+    def __init__(self, num_classes, num_sets):
+        super(MeanShiftLayer, self).__init__()
+        self.num_classes = num_classes
+        self.num_sets = num_sets
+        # Create angles for each class, assuming equal distribution over 360 degrees
+        base_angles = torch.arange(0, 360, 360 / num_classes)  # e.g., if num_classes=8 -> [0, 45, ..., 315]
+        # Adjust each set's angles by its offset
+        self.angles = torch.stack([
+            (base_angles + i * 360 / num_classes / num_sets) % 360
+            for i in range(num_sets)
+        ])  # Shape: [num_sets, num_classes]
+        self.register_buffer('registered_angles', self.angles)  # Registering angles as a constant buffer
+
+        # Neural network to map logits directly to an angle
+        self.to_angle_layer = nn.Sequential(
+            nn.Linear(num_classes, 64),  # Map from num_classes to an intermediate feature space
+            nn.ReLU(),
+            nn.Linear(64, 1)  # Map from the feature space to a single angle value
+        )
+
+    def forward(self, logits):
+        # logits shape is expected to be [batch, num_sets, num_classes]
+        # Flatten logits across sets for batch processing
+        flattened_logits = logits.view(-1, self.num_classes)  # Shape: [batch * num_sets, num_classes]
+
+        # Map logits directly to angles using the neural network
+        angles = self.to_angle_layer(flattened_logits)  # Shape: [batch * num_sets, 1]
+        angles = angles.view(-1, self.num_sets)  # Reshape back to [batch, num_sets]
+
+        # Take the mean of these angles across sets
+        mean_angle = torch.mean(angles, dim=1)  # Shape: [batch]
+
+        # Ensure angles are within [0, 360) degrees
+        return mean_angle % 360
 
 
 class AnglePredictor(nn.Module):
