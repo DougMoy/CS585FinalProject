@@ -101,7 +101,7 @@ class MeanShiftLayer(nn.Module):
         mean_angle = torch.mean(resultant_angles, dim=-1)  # Take mean across sets for final angle
         mean_angle_degrees = torch.rad2deg(mean_angle)  # Convert back to degrees
 
-        mean_angle_degrees -= 20
+        # mean_angle_degrees -= 20
 
         return mean_angle_degrees % 360  # Shape: [batch]
 
@@ -117,7 +117,8 @@ class AnglePredictor(nn.Module):
     def forward(self, x):
         features = self.feature_extractor(x)
         logits = self.orientation_layer(features)
-        return logits
+        angles = self.predict(logits)
+        return logits, angles
 
     def predict(self, logits):
         return self.mean_shift_layer(logits)

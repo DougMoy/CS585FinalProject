@@ -40,13 +40,9 @@ class VehicleDataset(Dataset):
 
         # Process the label based on mode
         continuous_angle = self.labels[idx]
-        if self.mode == "train" or self.mode == "val":
-            class_indices = self.transform_angle_to_classes(continuous_angle)
-            # print(continuous_angle, class_indices)
-            return image_tensor, class_indices
-        else:
-            assert self.mode == "test"
-            return image_tensor, torch.tensor([continuous_angle])
+        class_indices = self.transform_angle_to_classes(continuous_angle)
+
+        return image_tensor, torch.tensor([continuous_angle]), class_indices
 
     def transform_angle_to_classes(self, angle):
         """
@@ -84,15 +80,15 @@ def evaluate(model, test_loader, device):
     criterion = nn.L1Loss()
     total_loss = 0.0
     with torch.no_grad():
-        for inputs, labels in test_loader:
+        # image, angle, logits
+        for inputs, labels, indices in test_loader:
             inputs, labels = inputs.to(device), labels.to(device)
 
             labels = labels.squeeze()
 
-            outputs_discrete = model(inputs)
-            outputs = model.predict(outputs_discrete)
+            logits, angles = model(inputs)
 
-            loss = criterion(outputs, labels.float())
+            loss = criterion(angles, labels.float())
             total_loss += loss.item()
     average_loss = total_loss / len(test_loader)
     print(f"Test MAE Loss: {average_loss}")
@@ -115,21 +111,21 @@ def calculate_accuracy(model, test_loader, device):
     total_correct_preds = torch.zeros(test_loader.dataset.num_sets, device=device)
     total_samples = torch.zeros(test_loader.dataset.num_sets, device=device)
 
-    with torch.no_grad():  # Disable gradient computation
-        for inputs, labels in test_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
+    with torch.no_grad():
+        for inputs, labels, indices in test_loader:
+            inputs, indices = inputs.to(device), indices.to(device)
 
-            outputs = model(inputs)
+            logits, angles = model(inputs)
 
             # Calculate predictions and correctness for all start angles at once
-            predictions = torch.argmax(outputs, dim=2)
-            correct = predictions.eq(labels).type(torch.long)
+            predictions = torch.argmax(logits, dim=2)
+            correct = predictions.eq(indices).type(torch.long)
 
-            # print(predictions, labels)
+            # print(predictions, indices)
 
             # Sum correct predictions and total samples for each start angle
             total_correct_preds += correct.sum(dim=0)
-            total_samples += labels.size(0) * torch.ones(test_loader.dataset.num_sets, device=device)
+            total_samples += indices.size(0) * torch.ones(test_loader.dataset.num_sets, device=device)
 
     # Compute average accuracy for each start angle
     accuracies = (total_correct_preds / total_samples).tolist()
@@ -139,74 +135,37 @@ def calculate_accuracy(model, test_loader, device):
     return mean_acc, accuracies
 
 
-def circular_variance_loss(outputs, labels, num_classes, var_weight=0.1):
-    """
-    Custom loss function that penalizes predictions deviating significantly from the circular mean.
-    This function does not apply softmax as it assumes outputs are already probabilities or treated accordingly.
-
-    Args:
-        outputs (torch.Tensor): The model outputs; expected shape [batch_size, num_classes].
-        labels (torch.Tensor): The actual labels; shape [batch_size].
-        num_classes (int): The total number of classes, used for circular calculation.
-        var_weight (float): Weight of the variance penalty relative to the main classification loss.
-
-    Returns:
-        torch.Tensor: Total loss combining CrossEntropy and circular variance penalty.
-    """
-    # Main classification loss
-    classification_loss = F.cross_entropy(outputs, labels)
-
-    # Predicted class values
-    predicted_classes = torch.argmax(outputs, dim=1)
-
-    # Calculate mean predicted class, considering circular nature
-    sin_components = torch.sin(2 * torch.pi * predicted_classes / num_classes)
-    cos_components = torch.cos(2 * torch.pi * predicted_classes / num_classes)
-    mean_angle_sin = torch.mean(sin_components)
-    mean_angle_cos = torch.mean(cos_components)
-    mean_class = torch.atan2(mean_angle_sin, mean_angle_cos) * num_classes / (2 * torch.pi)
-    mean_class = torch.remainder(mean_class, num_classes)  # Ensure within [0, num_classes)
-
-    # Calculate the circular differences from the mean
-    differences = torch.abs(predicted_classes - mean_class)
-    differences = torch.minimum(differences, num_classes - differences)  # Handle circular nature
-
-    # Variance penalty for deviations greater than 1
-    variance_penalty = torch.mean((differences > 1).float())
-
-    # Combine losses
-    total_loss = classification_loss + var_weight * variance_penalty
-    return total_loss
-
-
 def train_model(device, model, train_loader, val_loader, num_epochs=30, lr=0.001):
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=num_epochs, gamma=0.1)
 
-    criterion = nn.CrossEntropyLoss()
-    # criterion = circular_variance_loss
+    criterion_logits = nn.CrossEntropyLoss()
+    criterion_angles = nn.L1Loss()
 
     logs = {}
 
     for epoch in tqdm(range(num_epochs)):
         model.train()
         running_loss = 0.0
-        for inputs, labels in train_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
+        for inputs, labels, indices in train_loader:
+            inputs, labels, indices = inputs.to(device), labels.to(device), indices.to(device)
 
             optimizer.zero_grad()
-            outputs = model(inputs)
+            logits, angles = model(inputs)
 
             # print(outputs.shape)
             # print(labels.shape)
 
             # Process each set of outputs and labels
-            loss = 0
-            for i in range(outputs.shape[1]):  # Iterate over each set
-                loss += criterion(outputs[:, i, :], labels[:, i])
+            loss_logits = 0
+            for i in range(logits.shape[1]):  # Iterate over each set
+                loss_logits += criterion_logits(logits[:, i, :], indices[:, i])
+            loss_logits = loss_logits / logits.shape[1]  # Average loss over all sets
 
-            loss = loss / outputs.shape[1]  # Average loss over all sets
+            loss_angles = criterion_angles(angles, labels)
+
+            loss = loss_logits + 0.0 * loss_angles
 
             loss.backward()
             optimizer.step()
