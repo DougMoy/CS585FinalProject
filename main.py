@@ -165,7 +165,8 @@ def train_model(device, model, train_loader, val_loader, num_epochs=30, lr=0.001
 
             loss_angles = criterion_angles(angles, labels)
 
-            loss = loss_logits + 0.001 * loss_angles
+            loss = loss_logits
+            # loss = loss_logits + 0.001 * loss_angles
 
             loss.backward()
             optimizer.step()
