@@ -210,7 +210,7 @@ def main():
 
     if args.transfer:
         import random
-        sample_n = int(0.1 * len(test_labels))
+        sample_n = int(0.05 * len(test_labels))
         sample_indices = random.sample(range(len(test_labels)), sample_n)
 
         sampled_images = [test_images[i] for i in sample_indices]

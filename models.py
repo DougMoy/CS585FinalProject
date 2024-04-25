@@ -62,20 +62,19 @@ class MeanShiftLayer(nn.Module):
         # Create angles for each class, assuming equal distribution over 360 degrees
         base_angles = torch.arange(0, 360, 360 / num_classes)  # e.g., if num_classes=8 -> [0, 45, ..., 315]
         # Adjust each set's angles by its offset
-        self.angles = torch.stack([
-            (base_angles + 0 * self.unit_shift) % 360
+        self.base_angles = torch.stack([
+            (base_angles + i * self.unit_shift) % 360
             for i in range(num_sets)
         ])  # Shape: [num_sets, num_classes]
-        self.register_buffer('registered_angles', self.angles)  # Registering angles as a constant buffer
-        print(self.registered_angles)
 
     def forward(self, logits):
         # Convert logits to probabilities across each class for each set of logits
         # logits shape is expected to be [batch, num_sets, num_classes]
         probabilities = F.softmax(logits, dim=-1)  # Applying softmax on the class dimension
 
+        self.base_angles = self.base_angles.to(logits.device)
         # Convert angles to radians and compute the x and y components
-        radians = torch.deg2rad(self.registered_angles)
+        radians = torch.deg2rad(self.base_angles)
         x_components = torch.cos(radians)
         y_components = torch.sin(radians)
 
