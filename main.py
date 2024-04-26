@@ -76,6 +76,10 @@ def get_data_loaders(train_images, train_labels, train_bboxes, test_images, test
 
 
 def evaluate(model, test_loader, device):
+
+    predictions = []  # List to store all predictions
+    ground_truths = []  # List to store all ground truth labels
+
     model.eval()
     criterion = nn.L1Loss()
     total_loss = 0.0
@@ -88,11 +92,15 @@ def evaluate(model, test_loader, device):
 
             logits, angles = model(inputs)
 
+            # Collect labels and predictions
+            predictions.extend(angles.cpu().tolist())
+            ground_truths.extend(labels.cpu().tolist())
+
             loss = criterion(angles, labels.float())
             total_loss += loss.item()
     average_loss = total_loss / len(test_loader)
     print(f"Test MAE Loss: {average_loss}")
-    return average_loss
+    return average_loss, dict(pre=predictions, gt=ground_truths)
 
 
 def calculate_accuracy(model, test_loader, device):
@@ -242,7 +250,9 @@ def main():
         model.load_state_dict(torch.load(model_save_path), strict=False)
         model.to(device)
         evaluate(model, _test_train_loader, device)
-        evaluate(model, test_loader, device)
+        loss, res = evaluate(model, test_loader, device)
+        with open(f"results/results_{arg_info}.json", "w") as f:
+            json.dump(res, f, indent=4)
         return
 
     model, train_logs = train_model(device, model, train_loader, val_loader, num_epochs=args.epoch)
