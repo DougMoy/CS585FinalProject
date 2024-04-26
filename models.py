@@ -93,17 +93,30 @@ class MeanShiftLayer(nn.Module):
         # mean_angle = torch.mean(resultant_angles, dim=-1)  # Take mean across sets for final angle
         # mean_angle_degrees = torch.rad2deg(mean_angle)  # Convert back to degrees
 
-        angle_degrees = torch.rad2deg(resultant_angles)  # Convert back to degrees
-        angle_degrees = angle_degrees % 360
+        # angle_degrees = torch.rad2deg(resultant_angles)  # Convert back to degrees
+        # angle_degrees = angle_degrees % 360
+        #
+        # for i in range(self.num_sets):
+        #     angle_degrees[:, i] -= i * self.unit_shift
+        #
+        # mean_angle_degrees = torch.mean(angle_degrees, dim=-1)  # Take mean across sets for final angle
+        #
+        # # print(angle_degrees)
+        # # print(mean_angle)
+        # # quit()
 
-        for i in range(self.num_sets):
-            angle_degrees[:, i] -= i * self.unit_shift
+        # Adjust the angles by subtracting the shift caused by discretization
+        adjusted_angles = (
+                    resultant_angles.unsqueeze(-1) - torch.deg2rad(torch.arange(self.num_sets) * self.unit_shift).to(
+                logits.device)).flatten(1)
 
-        mean_angle_degrees = torch.mean(angle_degrees, dim=-1)  # Take mean across sets for final angle
+        # Convert to degrees and map into [0, 360) range
+        adjusted_degrees = torch.rad2deg(adjusted_angles) % 360
 
-        # print(angle_degrees)
-        # print(mean_angle)
-        # quit()
+        # Compute the average angle using vector components of the adjusted angles
+        avg_x = torch.mean(torch.cos(torch.deg2rad(adjusted_degrees)), dim=-1)
+        avg_y = torch.mean(torch.sin(torch.deg2rad(adjusted_degrees)), dim=-1)
+        mean_angle_degrees = torch.rad2deg(torch.atan2(avg_y, avg_x)) % 360
 
         return mean_angle_degrees % 360  # Shape: [batch]
 
