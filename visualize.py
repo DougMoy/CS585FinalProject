@@ -162,8 +162,12 @@ def draw_mean_shift():
     logits2 = softmax(logits2)
 
     # Call the function with specific axes and titles
-    _draw_mean_shift(axes[0], base_degrees1, logits1, f"Probabilities={[round(logit, 3) for logit in logits1]}")
-    _draw_mean_shift(axes[1], base_degrees2, logits2, f"Weights={[round(logit, 3) for logit in logits2]}\n(Scale changed for visualization)")
+    _draw_mean_shift(axes[0], base_degrees1, logits1,
+                     f"Sum the products of probabilities and base angles to determine the set angle.\n"
+                     f"Probabilities={[round(logit, 3) for logit in logits1]}")
+    _draw_mean_shift(axes[1], base_degrees2, logits2,
+                     f"Calculate the average angle from the set angles.\n"
+                     f"(Visualization scale adjusted)")
 
     plt.tight_layout()
     # plt.show()
