@@ -9,13 +9,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--epoch", default=30, type=int)
 parser.add_argument("--cls_n", default=8, type=int, help="num of classes")
 parser.add_argument("--set_n", default=9, type=int, help="num of classes")
-parser.add_argument("--transfer", action="store_false")
 
 args = parser.parse_args()
 
 arg_info = f"cls={args.cls_n}_set={args.set_n}_e={args.epoch}"
-if args.transfer:
-    arg_info += "_transfer"
 
 # Ensure the figures directory exists
 fig_dir = "figs/"
